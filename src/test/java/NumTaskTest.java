@@ -1,7 +1,7 @@
 import org.apache.beam.runners.spark.SparkContextOptions;
 import org.apache.beam.runners.spark.SparkRunner;
 import org.apache.beam.sdk.Pipeline;
-import org.apache.beam.sdk.coders.AvroCoder;
+import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.coders.VarIntCoder;
 import org.apache.beam.sdk.extensions.joinlibrary.Join;
@@ -25,8 +25,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import test.Employee;
+import test.EmployeeCoder;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Random;
@@ -34,8 +34,8 @@ import javax.validation.constraints.NotNull;
 
 public class NumTaskTest {
     private static final Random RND = new Random();
-    public static final AvroCoder<Employee> EMPLOYEE_AVRO_CODER = AvroCoder.of(Employee.class, Employee.getClassSchema());
-    public static final int BATCH_SIZE = 10_000;
+    private static final Coder<Employee> EMPLOYEE_CODER = EmployeeCoder.of();
+    private static final int BATCH_SIZE = 10_000;
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder();
@@ -66,13 +66,13 @@ public class NumTaskTest {
         PCollection<KV<Integer, Employee>> joined =
                 pipeline.apply(Create.of(testData()))
                         .apply("Add Id", WithKeys.of(Employee::getRelation))
-                        .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_AVRO_CODER));
+                        .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_CODER));
 
         for (int i = 0; i < 10; i++) {
             final PCollection<KV<Integer, Employee>> employees =
                     pipeline.apply(Create.of(testData()))
                             .apply("Add Id", WithKeys.of(Employee::getRelation))
-                            .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_AVRO_CODER))
+                            .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_CODER))
                             .apply(GroupIntoBatches.ofSize(1_000))
                             .apply("flatten", ParDo.of(new FlattenGrouped()));
 
@@ -111,12 +111,10 @@ public class NumTaskTest {
     }
 
     private Employee createRandomEmployee(int id) {
-        final Employee employee = new Employee();
-        employee.setId(id);
-        employee.setRelation(RND.nextInt(BATCH_SIZE));
-        employee.setAge(RND.nextInt(120));
-        employee.setName(RandomStringUtils.randomAlphabetic(50));
-        return employee;
+        final int relation = RND.nextInt(BATCH_SIZE);
+        final int age = RND.nextInt(120);
+        final String name = RandomStringUtils.randomAlphabetic(50);
+        return new Employee(id, relation, name, age);
     }
 
     private static class FlattenEmployee extends DoFn<KV<Integer, KV<Employee, Employee>>, KV<Integer, Employee>> {
