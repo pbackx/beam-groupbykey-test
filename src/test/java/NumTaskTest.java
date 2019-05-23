@@ -65,13 +65,13 @@ public class NumTaskTest {
     public void test() throws IOException {
         PCollection<KV<Integer, Employee>> joined =
                 pipeline.apply(Create.of(testData()))
-                        .apply("Add Id", WithKeys.of(Employee::getId))
+                        .apply("Add Id", WithKeys.of(Employee::getRelation))
                         .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_AVRO_CODER));
 
         for (int i = 0; i < 10; i++) {
             final PCollection<KV<Integer, Employee>> employees =
                     pipeline.apply(Create.of(testData()))
-                            .apply("Add Id", WithKeys.of(Employee::getId))
+                            .apply("Add Id", WithKeys.of(Employee::getRelation))
                             .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_AVRO_CODER))
                             .apply(GroupIntoBatches.ofSize(1_000))
                             .apply("flatten", ParDo.of(new FlattenGrouped()));
