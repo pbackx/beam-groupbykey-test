@@ -35,7 +35,9 @@ import javax.validation.constraints.NotNull;
 public class NumTaskTest {
     private static final Random RND = new Random();
     private static final Coder<Employee> EMPLOYEE_CODER = EmployeeCoder.of();
-    private static final int BATCH_SIZE = 10_000;
+    private static final int NUMBER_OF_EMPLOYEES = 10_000;
+
+    private static final JavaSparkContext JSC = new JavaSparkContext(getSparkConf());
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder();
@@ -45,7 +47,7 @@ public class NumTaskTest {
     @Before
     public void setUp() {
         final SparkContextOptions options = PipelineOptionsFactory.create().as(SparkContextOptions.class);
-        options.setProvidedSparkContext(new JavaSparkContext(getSparkConf()));
+        options.setProvidedSparkContext(JSC);
         options.setUsesProvidedSparkContext(true);
         options.setStorageLevel("MEMORY_AND_DISK");
         options.setRunner(SparkRunner.class);
@@ -63,23 +65,13 @@ public class NumTaskTest {
 
     @Test
     public void test() throws IOException {
-        PCollection<KV<Integer, Employee>> joined =
-                pipeline.apply(Create.of(testData()))
-                        .apply("Add Id", WithKeys.of(Employee::getRelation))
-                        .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_CODER));
+        PCollection<KV<Integer, Employee>> joined = createEmployees();
 
         for (int i = 0; i < 10; i++) {
-            final PCollection<KV<Integer, Employee>> employees =
-                    pipeline.apply(Create.of(testData()))
-                            .apply("Add Id", WithKeys.of(Employee::getRelation))
-                            .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_CODER))
-                            .apply(GroupIntoBatches.ofSize(1_000))
-                            .apply("flatten", ParDo.of(new FlattenGrouped()));
+            final PCollection<KV<Integer, Employee>> employees = createEmployees();
 
             joined = Join.innerJoin("join " + i, joined, employees)
-                         .apply("Back to single employee", ParDo.of((new FlattenEmployee())))
-                         .apply(GroupIntoBatches.ofSize(1_000))
-                         .apply("flatten", ParDo.of(new FlattenGrouped()));
+                         .apply("Back to single employee", ParDo.of((new FlattenEmployee())));
         }
 
         joined.apply("count", Count.perKey())
@@ -93,13 +85,46 @@ public class NumTaskTest {
         System.out.println("Done.");
     }
 
+    @Test
+    public void testWithGroupIntoBatchesAndFlatten() throws IOException {
+        final int batchSize = 1_000;
+        PCollection<KV<Integer, Employee>> joined = createEmployees();
+
+        for (int i = 0; i < 10; i++) {
+            final PCollection<KV<Integer, Employee>> employees = createEmployees()
+                    .apply(GroupIntoBatches.ofSize(batchSize))
+                    .apply("flatten", ParDo.of(new FlattenGrouped()));
+
+            joined = Join.innerJoin("join " + i, joined, employees)
+                         .apply("Back to single employee", ParDo.of((new FlattenEmployee())))
+                         .apply(GroupIntoBatches.ofSize(batchSize))
+                         .apply("flatten", ParDo.of(new FlattenGrouped()));
+        }
+
+        joined.apply("count", Count.perKey())
+              .apply("to text", MapElements.via(new ToString()))
+              .apply("output", TextIO.write()
+                                     .to(folder.newFolder("output").getAbsolutePath() + "/count-batched-")
+                                     .withSuffix(".csv")
+                                     .withNumShards(1));
+        pipeline.run().waitUntilFinish();
+
+        System.out.println("Done.");
+    }
+
+    private PCollection<KV<Integer, Employee>> createEmployees() {
+        return pipeline.apply(Create.of(testData()))
+                       .apply("Add Id", WithKeys.of(Employee::getRelation))
+                       .setCoder(KvCoder.of(VarIntCoder.of(), EMPLOYEE_CODER));
+    }
+
     private Iterable<Employee> testData() {
         return () -> new Iterator<Employee>() {
             private int count = 0;
 
             @Override
             public boolean hasNext() {
-                return count < BATCH_SIZE;
+                return count < NUMBER_OF_EMPLOYEES;
             }
 
             @Override
@@ -111,7 +136,7 @@ public class NumTaskTest {
     }
 
     private Employee createRandomEmployee(int id) {
-        final int relation = RND.nextInt(BATCH_SIZE);
+        final int relation = RND.nextInt(NUMBER_OF_EMPLOYEES);
         final int age = RND.nextInt(120);
         final String name = RandomStringUtils.randomAlphabetic(50);
         return new Employee(id, relation, name, age);
