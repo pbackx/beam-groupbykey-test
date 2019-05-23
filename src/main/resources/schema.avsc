@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "namespace": "test",
+  "name": "Employee",
+  "fields": [
+    {
+      "name": "Id",
+      "type": "int"
+    },
+    {
+      "name": "Relation",
+      "type": "int"
+    },
+    {
+      "name": "Name",
+      "type": "string"
+    },
+    {
+      "name": "Age",
+      "type": "int"
+    }
+  ]
+}
