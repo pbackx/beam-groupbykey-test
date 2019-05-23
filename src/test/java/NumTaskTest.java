@@ -20,6 +20,7 @@ import org.apache.beam.sdk.values.PCollection;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -27,8 +28,14 @@ import org.junit.rules.TemporaryFolder;
 import test.Employee;
 import test.EmployeeCoder;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.CopyOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.Random;
 import javax.validation.constraints.NotNull;
 
@@ -38,6 +45,7 @@ public class NumTaskTest {
     private static final int NUMBER_OF_EMPLOYEES = 10_000;
 
     private static final JavaSparkContext JSC = new JavaSparkContext(getSparkConf());
+    private static final Path TARGET_FOLDER = new File("target").toPath();
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder();
@@ -52,6 +60,25 @@ public class NumTaskTest {
         options.setStorageLevel("MEMORY_AND_DISK");
         options.setRunner(SparkRunner.class);
         pipeline = Pipeline.create(options);
+    }
+
+    @After
+    public void cleanUp() throws IOException {
+        final Path rootPath = folder.getRoot().toPath();
+        Files.walk(rootPath)
+             .filter(src -> !Objects.equals(rootPath, src))
+             .forEach(src -> doCopy(src, rootPath.relativize(src)));
+    }
+
+    private void doCopy(Path src, Path relativePath) {
+        try {
+            final Path destination = TARGET_FOLDER.resolve(relativePath);
+            if(!destination.toFile().exists()) {
+                Files.copy(src, destination);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @NotNull
