@@ -1,4 +1,4 @@
-# Combinatorial Explosion of Tasksk per Stage in Spark Runner
+# Combinatorial Explosion of Tasks per Stage in Spark Runner
 
 The code in this repository demonstrates an issue that we have found when running our
 pipelines with the latest Beam 2.12.0 on Spark. The issue was not present in Beam 2.8.0
